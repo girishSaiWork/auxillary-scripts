@@ -1,0 +1,28 @@
+def flatten_df(df, parent_name=""):
+    fields = df.schema.fields
+    for field in fields:
+        col_name = field.name
+        data_type = field.dataType
+        full_name = f"{parent_name}.{col_name}" if parent_name else col_name
+
+        if isinstance(data_type, ArrayType):
+            print(f"[Array] Exploding: {full_name}")
+            df = df.withColumn(full_name, explode(col(full_name)))
+            # After exploding, continue flattening the elementType (could be struct or array again)
+            df = flatten_df(df, parent_name="")  # Start over because schema changed
+            return df
+
+        elif isinstance(data_type, StructType):
+            print(f"[Struct] Flattening: {full_name}")
+            for inner_field in data_type.fields:
+                new_col_name = f"{col_name}_{inner_field.name}"
+                df = df.withColumn(new_col_name, col(f"{col_name}.{inner_field.name}"))
+            df = df.drop(col_name)
+            # After flattening, schema changed — reprocess from top
+            df = flatten_df(df, parent_name="")  
+            return df
+
+        else:
+            print(f"[Flat] Field: {full_name} : {data_type}")
+
+    return df
