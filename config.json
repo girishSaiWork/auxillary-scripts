@@ -1,0 +1,67 @@
+{
+    "microbatchInformation": {
+        "microbatchName": "KAFKA_LOG_RAW",
+        "sourceSystem": "KAFKA_INGESTION"
+    },
+    "storage": {
+        "accountName": "<storage_account>",
+        "containerName": "<container>",
+        "basePath": "abfss://<container>@<storage_account>.dfs.core.windows.net/"
+    },
+    "fileDetails": {
+        "fileNamePattern": "data_stream_*.json",
+        "landingZonePath": "source_data/stream_data",
+        "archivePath": "archive/stream_data"
+    },
+    "rawZoneDeltaTableInformation": {
+        "tableName": "event_log_bronze",
+        "path": "bronze/event_log",
+        "checkpoint": "bronze/_checkpoints/event_log",
+        "writeMode": "append",
+        "partitionKeys": [
+            "ingestion_date"
+        ]
+    },
+    "curatedDeltaTableInformation": {
+        "tableName": "unmasking_event_log_silver",
+        "path": "silver/event_log",
+        "errorPath": "silver/event_log_error",
+        "checkpoint": "silver/_checkpoints/event_log",
+        "writeMode": "append",
+        "partitionKeys": [
+            "eventDate"
+        ]
+    },
+    "columns": [
+        {
+            "targetName": "signInId",
+            "sourceName": "signInID",
+            "type": "string",
+            "isPk": true
+        },
+        {
+            "targetName": "customerId",
+            "sourceName": "customerID",
+            "type": "string",
+            "isPk": true
+        },
+        {
+            "targetName": "applicationCode",
+            "sourceName": "applicationID",
+            "type": "string",
+            "isPk": true
+        },
+        {
+            "targetName": "eventTimestamp",
+            "sourceName": "eventDateTimestamp",
+            "type": "timestamp",
+            "isPk": true
+        },
+        {
+            "targetName": "viewedFieldNames",
+            "sourceName": "viewedField",
+            "type": "array<string>",
+            "isPk": true
+        }
+    ]
+}
