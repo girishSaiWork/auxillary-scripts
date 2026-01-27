@@ -1,0 +1,48 @@
+{
+    "dataQualityRules": {
+        "not_null": {
+            "columns": [
+                "signInId",
+                "customerId",
+                "applicationCode",
+                "eventTimestamp",
+                "viewedFieldNames"
+            ],
+            "ruleId": "ERR_NULL_CHECK"
+        },
+        "regex_pattern": [
+            {
+                "column": "signInId",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                "ruleId": "ERR_INVALID_UUID"
+            }
+        ],
+        "allowed_values": [
+            {
+                "column": "applicationCode",
+                "values": [
+                    "App-Mobile-iOS",
+                    "App-Mobile-Android",
+                    "Web-Banking-Portal",
+                    "ATM-Interface",
+                    "Branch-CRM",
+                    "Partner-API"
+                ],
+                "ruleId": "ERR_INVALID_APP_CODE"
+            }
+        ],
+        "min_length": [
+            {
+                "column": "customerId",
+                "length": 10,
+                "ruleId": "ERR_SHORT_CUST_ID"
+            }
+        ],
+        "array_not_empty": {
+            "columns": [
+                "viewedFieldNames"
+            ],
+            "ruleId": "ERR_EMPTY_VIEWED_FIELDS"
+        }
+    }
+}
