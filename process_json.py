@@ -1,61 +1,92 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import current_timestamp, input_file_name
-from pyspark.sql.types import StructType, StructField, StringType, ArrayType
+from pyspark.sql.types import (
+    StructType, StructField, StringType, ArrayType, TimestampType, IntegerType, LongType
+)
+import json
 
-# Initialize Spark Session (implicitly available in Databricks notebooks, but good for standalone scripts)
+# Initialize Spark Session (if needed for standalone execution)
 # spark = SparkSession.builder.appName("BronzeIngestion").getOrCreate()
 
 # -------------------------------------------------------------------------
-# CONFIGURATION
+# LOAD CONFIGURATION
 # -------------------------------------------------------------------------
-# TODO: Update these paths with your actual ADLS Gen2 paths
-# Example: "abfss://container_name@storage_account_name.dfs.core.windows.net/path/to/data"
-SOURCE_PATH = "abfss://<container>@<storage_account>.dfs.core.windows.net/source_data/stream_data"
-BRONZE_OUTPUT_PATH = "abfss://<container>@<storage_account>.dfs.core.windows.net/bronze/logs_delta"
-CHECKPOINT_PATH = "abfss://<container>@<storage_account>.dfs.core.windows.net/bronze/_checkpoints/logs_ingestion"
+CONFIG_PATH = "e:/Study Space/Analytics Enginerring/Data Engineering/Azure Databricks/Kafka/config.json"
+
+# In Databricks, if config is in DBFS or Repo, read via regular python open or spark.read
+# Here we assume local file access or accessible path.
+with open(CONFIG_PATH, 'r') as f:
+    config = json.load(f)
 
 # -------------------------------------------------------------------------
-# SCHEMA DEFINITION
+# CONSTRUCT PATHS
 # -------------------------------------------------------------------------
-# Matches the structure from data_log_gen.py
-schema = StructType([
-    StructField("signInID", StringType(), True),
-    StructField("customerID", StringType(), True),
-    StructField("applicationID", StringType(), True),
-    StructField("eventDateTimestamp", StringType(), True),
-    StructField("viewedField", ArrayType(StringType()), True)
-])
+base_path = config["storage"]["basePath"]
+source_rel_path = config["fileDetails"]["landingZonePath"]
+bronze_rel_path = config["rawZoneDeltaTableInformation"]["path"]
+checkpoint_rel_path = config["rawZoneDeltaTableInformation"]["checkpoint"]
+
+# Combine base + relative
+SOURCE_PATH = f"{base_path}{source_rel_path}"
+BRONZE_OUTPUT_PATH = f"{base_path}{bronze_rel_path}"
+CHECKPOINT_PATH = f"{base_path}{checkpoint_rel_path}"
+
+# -------------------------------------------------------------------------
+# DYNAMIC SCHEMA GENERATION
+# -------------------------------------------------------------------------
+# We need to map config types to PySpark types
+type_mapping = {
+    "string": StringType(),
+    "integer": IntegerType(),
+    "long": LongType(),
+    "timestamp": StringType(), # Read as string first from JSON, typically
+    "array<string>": ArrayType(StringType())
+}
+
+fields = []
+# Bronze (Raw) needs to match the SOURCE JSON keys.
+# Our config has "sourceName". We use that.
+for col_def in config["columns"]:
+    src_name = col_def.get("sourceName", col_def["targetName"])
+    spark_type = type_mapping.get(col_def["type"], StringType())
+    
+    # Override: In JSON source, timestamp comes as string usually
+    if col_def["type"] == "timestamp":
+         spark_type = StringType()
+         
+    fields.append(StructField(src_name, spark_type, True))
+
+schema = StructType(fields)
 
 def process_stream():
     # -------------------------------------------------------------------------
     # READ STREAM
     # -------------------------------------------------------------------------
-    # Using 'multiLine' because the generator produces JSON arrays in each file.
-    # Note: For production with millions of small files, consider using Auto Loader ('cloudFiles').
-    # To use Auto Loader: .format("cloudFiles").option("cloudFiles.format", "json")
+    print(f"Reading from: {SOURCE_PATH}")
     
-    raw_df = (spark.readStream
+    raw_stream = (spark.readStream
               .format("json")
               .schema(schema)
-              .option("multiLine", "true")  # Required for JSON arrays or pretty-printed JSON
-              .option("cleanSource", "archive") # Optional: Archive processed files
+              .option("multiLine", "true") 
               .load(SOURCE_PATH))
 
     # -------------------------------------------------------------------------
     # TRANSFORMATIONS (Bronze Layer)
     # -------------------------------------------------------------------------
-    # Bronze layer typically keeps data raw but adds metadata
-    bronze_df = raw_df.withColumn("ingestion_timestamp", current_timestamp()) \
-                      .withColumn("source_filename", input_file_name())
+    bronze_df = raw_stream \
+        .withColumn("ingestion_timestamp", current_timestamp()) \
+        .withColumn("source_filename", input_file_name()) \
+        .withColumn("ingestion_date", current_timestamp().cast("date"))
 
     # -------------------------------------------------------------------------
     # WRITE STREAM
     # -------------------------------------------------------------------------
-    # Writing to Delta Lake format is best practice for Databricks
     query = (bronze_df.writeStream
              .format("delta")
-             .outputMode("append")
+             .outputMode(config["rawZoneDeltaTableInformation"]["writeMode"])
              .option("checkpointLocation", CHECKPOINT_PATH)
+             # Partitioning by ingestion date helps file management
+             .partitionBy("ingestion_date")
              .start(BRONZE_OUTPUT_PATH))
     
     print(f"Stream started... Writing to {BRONZE_OUTPUT_PATH}")
