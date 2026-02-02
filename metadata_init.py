@@ -103,6 +103,17 @@ dq_data = [
         "app_scope_inclusion": ["ALL"],
         "app_scope_exclusion": [],
         "error_message": "viewedFieldNames array is empty"
+    },
+    # 5. is_iso_timestamp (Global)
+    {
+        "policy_id": "DQ_005",
+        "dataset_name": "event_log",
+        "rule_type": "is_iso_timestamp",
+        "target_column": "eventTimestamp",
+        "rule_params": {},
+        "app_scope_inclusion": ["ALL"],
+        "app_scope_exclusion": [],
+        "error_message": "Invalid ISO timestamp format"
     }
 ]
 
